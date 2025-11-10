@@ -30,9 +30,10 @@ def test_lip_ring_mask_from_landmarks_produces_non_empty_mask():
     # Construct synthetic landmarks with valid indices for lip ring.
     num_points = 500
     landmarks = np.zeros((num_points, 2), dtype=np.float32)
-    # Place all points roughly in the center region.
-    landmarks[:, 0] = 100.0
-    landmarks[:, 1] = 100.0
+    # Distinct nested ellipses form a ring; coincident points do not.
+    for indices, rx, ry in [(face_utils._LIP_OUTER_IDX, 40, 20), (face_utils._LIP_INNER_IDX, 15, 7)]:
+        angles = np.linspace(0, 2*np.pi, len(indices), endpoint=False)
+        landmarks[indices] = np.column_stack([100+rx*np.cos(angles), 100+ry*np.sin(angles)])
 
     image = np.zeros((200, 200, 3), dtype=np.uint8)
     mask = face_utils.lip_ring_mask_from_landmarks(image, landmarks)
@@ -41,3 +42,9 @@ def test_lip_ring_mask_from_landmarks_produces_non_empty_mask():
     assert mask.shape[:2] == (200, 200)
     assert np.any(mask > 0)
 
+
+
+def test_coincident_lip_points_produce_an_empty_ring():
+    landmarks = np.full((500,2),100,dtype=np.float32)
+    mask = face_utils.lip_ring_mask_from_landmarks(np.zeros((200,200,3),dtype=np.uint8),landmarks)
+    assert not np.any(mask)

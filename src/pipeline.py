@@ -72,6 +72,9 @@ def apply_aesthetic_procedures_pipeline(
     result_rgb = base_rgb.copy()
     info: Dict[str, Any] = {"used_generative": False, "warnings": []}
 
+    if not lip_int and not ue_int:
+        return result_rgb, info
+
     landmarks = None if face is None else face.get("landmarks_px")
     if landmarks is None:
         return result_rgb, info
@@ -126,11 +129,11 @@ def apply_aesthetic_procedures_pipeline(
                     seed=int(seed) + 1 if seed is not None else None,
                 )
 
-            info["used_generative"] = True
+            info["used_generative"] = bool((lip_int and "lip_ring" in regions) or (ue_int and "under_eye" in regions))
             return result_rgb, info
-        except ImportError:
+        except (ImportError, OSError):
             info["warnings"].append(
-                "Generative editing dependencies not installed; using fast non-generative effects instead."
+                "Generative dependencies or cached weights are unavailable; using non-generative effects instead."
             )
             # Fall through to classical path below.
 
@@ -149,7 +152,7 @@ def compute_identity_similarity(
     bbox: Tuple[int, int, int, int],
     margin: float = 0.1,
 ) -> float:
-    """Compute SSIM over the cropped face region as an identity proxy."""
+    """Compute structural pixel similarity; this is not biometric identity verification."""
     orig_crop = crop_with_bbox(original_rgb, bbox, margin=margin)
     res_crop = crop_with_bbox(edited_rgb, bbox, margin=margin)
 

@@ -57,6 +57,7 @@ def _ensure_pipeline(model_id: str = SDXL_INPAINT_MODEL_ID):
     _PIPE = StableDiffusionXLInpaintPipeline.from_pretrained(
         model_id,
         torch_dtype=_DTYPE,
+        local_files_only=True,
         variant="fp16" if _DTYPE == torch.float16 else None,
     )
     _PIPE.to(_DEVICE)
@@ -79,8 +80,8 @@ def _roi_from_mask(mask: np.ndarray, pad: int = 16) -> Optional[Tuple[int, int, 
     h, w = mask.shape[:2]
     x0 = max(0, x0 - pad)
     y0 = max(0, y0 - pad)
-    x1 = min(w, x1 + pad)
-    y1 = min(h, y1 + pad)
+    x1 = min(w, x1 + pad + 1)
+    y1 = min(h, y1 + pad + 1)
     return int(x0), int(y0), int(x1), int(y1)
 
 
@@ -99,12 +100,11 @@ def sdxl_inpaint_edit(
     image_rgb: HxWx3 uint8
     mask: HxW uint8 where 255 indicates region to modify
     """
-    pipe, device, _ = _ensure_pipeline(model_id)
-
     # Compute ROI around the mask to speed up
     roi = _roi_from_mask(mask)
     if roi is None:
         return image_rgb
+    pipe, device, _ = _ensure_pipeline(model_id)
     x0, y0, x1, y1 = roi
 
     img_roi = image_rgb[y0:y1, x0:x1]

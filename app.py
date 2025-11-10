@@ -4,7 +4,7 @@ import hashlib
 import cv2
 import numpy as np
 import streamlit as st
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from src.config import (
     DEFAULT_LIP_PROMPT,
@@ -23,7 +23,8 @@ from src.pipeline import (
 
 st.set_page_config(page_title="Local Aesthetic Preview POC", layout="wide")
 
-st.title("Aesthetic Preview POC")
+st.title("Local image-effects preview")
+st.caption("Illustrative image editing only. Outputs do not predict treatment results, and structural similarity does not verify identity.")
 
 
 def _fix_orientation(img: Image.Image) -> Image.Image:
@@ -58,11 +59,20 @@ if file is None:
     st.info("Upload a selfie to begin.")
     st.stop()
 
-# Load image with PIL to respect EXIF orientation
-pil = Image.open(file)
-orig_pil = _fix_orientation(pil)
-image_rgb = _pil_to_rgb(orig_pil)
-image_rgb = _resize_max(image_rgb, max_side=1280)
+# Bound decoded image size before conversion; no uploaded image is saved by this app.
+if file.size > 10 * 1024 * 1024:
+    st.error("Choose a JPEG or PNG no larger than 10 MiB.")
+    st.stop()
+try:
+    pil = Image.open(file)
+    if pil.format not in {"JPEG", "PNG"} or pil.width * pil.height > 20_000_000:
+        raise ValueError("Choose a JPEG or PNG with at most 20 million pixels.")
+    pil.load()
+    orig_pil = _fix_orientation(pil)
+    image_rgb = _resize_max(_pil_to_rgb(orig_pil), max_side=1280)
+except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+    st.error("This image could not be decoded within the supported JPEG/PNG limits.")
+    st.stop()
 
 # QC
 qc = run_qc_pipeline(image_rgb)
@@ -120,7 +130,7 @@ st.subheader("Aesthetic procedures (beta)")
 # Generative editing toggle (SDXL inpainting). Falls back to classical CV if off/missing deps.
 gen_col1, gen_col2, gen_col3 = st.columns([1, 1, 2])
 with gen_col1:
-    use_gen = st.toggle("Use generative editing", value=True, help="Uses SDXL inpainting on precise masks for high realism. Requires optional ML deps.")
+    use_gen = st.toggle("Use generative editing", value=False, help="Optional SDXL image editing. Requires separately installed ML dependencies and already cached model weights; downloads are disabled here.")
 with gen_col2:
     gen_strength = st.slider("Gen strength", 0.10, 0.90, 0.55, 0.05, help="How strongly to apply generative change inside the mask.")
 with gen_col3:
@@ -184,7 +194,8 @@ with c1:
 with c2:
     st.image(result_rgb, caption="After", use_column_width=True)
 
-st.write(f"Identity similarity (SSIM on face crop): {ssim_val:.3f}")
+st.write(f"Structural similarity (SSIM on the selected face crop): {ssim_val:.3f}")
+st.caption("This pixel-structure comparison is not biometric identity verification or evidence of a likely treatment outcome.")
 
 # Download
 res_pil = Image.fromarray(result_rgb)
